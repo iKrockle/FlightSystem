@@ -1,0 +1,134 @@
+package com.gridnine.testing;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
+/**
+ * Factory class to get sample list of flights.
+ */
+class FlightBuilder {
+    static List<Flight> createFlights() {
+        LocalDateTime threeDaysFromNow = LocalDateTime.now().plusDays(3);
+        return Arrays.asList(
+            //A normal flight with two hour duration
+            createFlight(threeDaysFromNow, threeDaysFromNow.plusHours(2)),
+            //A normal multi segment flight
+            createFlight(threeDaysFromNow, threeDaysFromNow.plusHours(2),
+                threeDaysFromNow.plusHours(3), threeDaysFromNow.plusHours(5)),
+            //A flight departing in the past
+            createFlight(threeDaysFromNow.minusDays(6), threeDaysFromNow),
+            //A flight that departs before it arrives
+            createFlight(threeDaysFromNow, threeDaysFromNow.minusHours(6)),
+            //A flight with more than two hours ground time
+            createFlight(threeDaysFromNow, threeDaysFromNow.plusHours(2),
+                threeDaysFromNow.plusHours(5), threeDaysFromNow.plusHours(6)),
+            //Another flight with more than two hours ground time
+            createFlight(threeDaysFromNow, threeDaysFromNow.plusHours(2),
+                threeDaysFromNow.plusHours(3), threeDaysFromNow.plusHours(4),
+                threeDaysFromNow.plusHours(6), threeDaysFromNow.plusHours(7)));
+    }
+
+    private static Flight createFlight(final LocalDateTime... dates) {
+        if ((dates.length % 2) != 0) {
+            throw new IllegalArgumentException(
+                "you must pass an even number of dates");
+        }
+        List<Segment> segments = new ArrayList<>(dates.length / 2);
+        for (int i = 0; i < (dates.length - 1); i += 2) {
+            segments.add(new Segment(dates[i], dates[i + 1]));
+        }
+        return new Flight(segments);
+    }
+}
+
+/**
+ * Bean that represents a flight.
+ */
+class Flight {
+    private final List<Segment> segments;
+
+    Flight(final List<Segment> segs) {
+        segments = segs;
+    }
+
+    List<Segment> getSegments() {
+        return segments;
+    }
+
+    @Override
+    public String toString() {
+        return segments.stream().map(Object::toString)
+            .collect(Collectors.joining(" "));
+    }
+}
+
+/**
+ * Bean that represents a flight segment.
+ */
+class Segment {
+    private final LocalDateTime departureDate;
+
+    private final LocalDateTime arrivalDate;
+
+    Segment(final LocalDateTime dep, final LocalDateTime arr) {
+        departureDate = Objects.requireNonNull(dep);
+        arrivalDate = Objects.requireNonNull(arr);
+    }
+
+    LocalDateTime getDepartureDate() {
+        return departureDate;
+    }
+
+    LocalDateTime getArrivalDate() {
+        return arrivalDate;
+    }
+
+    @Override
+    public String toString() {
+        DateTimeFormatter fmt =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
+        return '[' + departureDate.format(fmt) + '|' + arrivalDate.format(fmt)
+            + ']';
+    }
+}
+
+class Filter {
+    //Без фильтра
+    static List<Flight> noFilter(){
+        return FlightBuilder.createFlights();
+    }
+    //Убираем улетевшие
+    static List<Flight> noFlightOut(){
+        return FlightBuilder.createFlights().stream()
+                .filter(flight -> flight.getSegments().getFirst().getDepartureDate().isAfter(LocalDateTime.now()))
+                .toList();
+    }
+    //Убираем где в сегментах дата прилета раньше даты вылета
+    static List<Flight> noDepartureAfterArrivalSeg(){
+        return FlightBuilder.createFlights().stream()
+                .filter(flight -> flight.getSegments().stream()
+                                  .filter(c->c.getDepartureDate().isAfter(c.getArrivalDate())).toList().isEmpty())
+                .toList();
+    }
+    //Убираем где в сегментах дата прилета раньше даты вылета
+    static List<Flight> noLandingLessTwoHours(){
+        return FlightBuilder.createFlights().stream()
+                .filter(flight -> {
+                    List<Segment> segments = flight.getSegments();
+                    long summLandingTime = 0L;
+
+                    for (int i=0;i<segments.size()-1;i++){
+                        summLandingTime += Duration.between(segments.get(i).getArrivalDate(),segments.get(i+1).getDepartureDate()).toMinutes();
+                    }
+
+                    return summLandingTime <= 120;
+                })
+                .toList();
+    }
+}
